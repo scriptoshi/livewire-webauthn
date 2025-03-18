@@ -6,7 +6,7 @@
     @endif
 
     @if ($isRegistering)
-        <div class="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-sm">
+        <div class="bg-white dark:bg-gray-850">
             <flux:heading size="lg">
                 {{ __('Register a new security key') }}
             </flux:heading>
@@ -119,7 +119,7 @@
             </div>
         </div>
     @elseif (!$enabled || count($credentials) === 0)
-        <div class="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-sm">
+        <div class="bg-white dark:bg-gray-850">
             <flux:heading size="lg">
                 {{ __('You have not enabled WebAuthn authentication.') }}
             </flux:heading>
@@ -137,7 +137,7 @@
             </div>
         </div>
     @else
-        <div class="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-sm">
+        <div class="bg-white dark:bg-gray-850">
             <flux:heading size="lg">
                 {{ __('WebAuthn Security Keys') }}
             </flux:heading>

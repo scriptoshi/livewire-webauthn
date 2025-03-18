@@ -37,7 +37,7 @@
                                 displayName: @js($registrationOptions['user']['displayName'])
                             },
                             pubKeyCredParams: @js($registrationOptions['pubKeyCredParams']),
-                            timeout: @js($registrationOptions['timeout']) || 60000,
+                            timeout: @js($registrationOptions['timeout']??6000) || 60000,
                             attestation: @js($registrationOptions['attestation']) || 'none',
                             authenticatorSelection: @js($registrationOptions['authenticatorSelection']) || {}
                         };

@@ -25,7 +25,7 @@
                     challenge: this.base64UrlDecode(@js($authOptions['challenge'])),
                     rpId: @js($authOptions['rpId']),
                     userVerification: @js($authOptions['userVerification']) || 'preferred',
-                    timeout: @js($authOptions['timeout']) || 60000,
+                    timeout: @js($authOptions['timeout']??60000) || 60000,
                 };
                 
                 if (@js($authOptions['allowCredentials']) && @js($authOptions['allowCredentials']).length > 0) {

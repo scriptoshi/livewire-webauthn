@@ -13,7 +13,7 @@ Route::middleware(['web', 'guest'])->group(function () {
     })->name('webauthn.challenge');
 });
 
-// Register the middleware to intercept login attempts
+// Register the middleware to intercept login attempts.
 Route::middleware(['web'])->group(function () {
     // This route will handle the authentication attempt and redirect to WebAuthn if needed
     Route::post('/webauthn/login', function () {

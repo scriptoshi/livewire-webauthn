@@ -96,7 +96,7 @@ WEBAUTHN_USER_VERIFICATION=preferred
 
 ### Integrating with Login as Second factor Auth.
 
-Add the middleware to your login logic. If you're using Laravel's built-in authentication:
+Add the middleware to intercept your login logic. Note: this is the route for `POST` when users submit the login form. In volt components this route is missing !.
 
 1. Add this to your `routes/web.php`:
 
@@ -160,7 +160,7 @@ That's it! The component will handle registering, managing, and using WebAuthn c
 
 ## Using WebAuthn Confirmation Modals
 
-For enhanced security, you can require WebAuthn confirmation for sensitive operations. This is similar to password confirmation but uses a security key or biometric instead.
+For enhanced security, you can require WebAuthn confirmation for sensitive operations. This is similar to password confirmation but uses a security key or biometric instead. You can then call call `$this->ensureWebAuthnIsConfirmed();` before performing any critical actions.
 
 1. Include the trait in your Livewire component:
 
@@ -169,7 +169,7 @@ use Scriptoshi\LivewireWebauthn\Traits\ConfirmsWebAuthn;
 
 class AdminSettings extends Component
 {
-    use ConfirmsWebAuthn;
+    use ConfirmsWebAuthn; // include the Trait
 
     /**
      * Enable administration mode for user.
@@ -183,7 +183,7 @@ class AdminSettings extends Component
 }
 ```
 
-2. Wrap the sensitive action in your component:
+1. In the components blade, Wrap the sensitive action.
 
 ```blade
 <x-confirms-webauthn wire:then="enableAdminMode">

@@ -158,6 +158,27 @@ Volt::route('settings/webauthn', 'settings.webauthn')->name('settings.webauthn')
 
 That's it! The component will handle registering, managing, and using WebAuthn credentials.
 
+### Configure Tailwind CSS
+
+To ensure that Tailwind CSS properly processes the component styles, add this package to your content sources in your CSS file (typically `resources/css/app.css`):
+
+```css
+/* Add this line with your other @source directives */
+@source '../../vendor/scriptoshi/livewire-webauthn/resources/views/**/*.blade.php';
+```
+
+For example, your CSS file might look similar to this:
+
+```css
+@import "tailwindcss";
+
+@source "../views";
+@source '../../vendor/laravel/framework/src/Illuminate/Pagination/resources/views/*.blade.php';
+@source '../../vendor/scriptoshi/livewire-webauthn/resources/views/**/*.blade.php';
+
+/* Rest of your CSS file */
+```
+
 ## Using WebAuthn Confirmation Modals
 
 For enhanced security, you can require WebAuthn confirmation for sensitive operations. This is similar to password confirmation but uses a security key or biometric instead. You can then call call `$this->ensureWebAuthnIsConfirmed();` before performing any critical actions.

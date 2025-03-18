@@ -202,19 +202,20 @@
                     </div>
                 </div>
             </div>
-            <div class="mt-4">
+            <div class="mt-10 border rounded border-gray-200 dark:border-gray-700 p-4">
                 <flux:input wire:model="newCredentialName"
                     placeholder="{{ __('Security Key Name (e.g. Yubikey, IPhone)') }}" class="w-full mb-4" />
-            </div>
-            <div class="mt-6 flex items-center justify-end gap-4 space-x-4">
-                @error('credentials')
-                    <div class="mt-2 text-sm text-red-600 dark:text-red-400">
-                        {{ $message }}
-                    </div>
-                @enderror
-                <flux:button type="button" wire:click="startRegistration" wire:loading.attr="disabled">
-                    {{ __('Add Another Security Key') }}
-                </flux:button>
+           
+                <div class="mt-6 flex items-center justify-end gap-4 space-x-4">
+                    @error('credentials')
+                        <div class="mt-2 text-sm text-red-600 dark:text-red-400">
+                            {{ $message }}
+                        </div>
+                    @enderror
+                    <flux:button type="button" wire:click="startRegistration" wire:loading.attr="disabled">
+                        {{ __('Add Another Security Key') }}
+                    </flux:button>
+                </div>
             </div>
         </div>
     @endif

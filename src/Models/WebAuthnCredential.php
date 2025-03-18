@@ -3,22 +3,24 @@
 namespace Scriptoshi\LivewireWebauthn\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class WebAuthnCredential extends Model
 {
-
     /**
-     * The database table used by the model.
+     * The table associated with the model.
      *
      * @var string
      */
     protected $table = 'webauthn_credentials';
+
     /**
      * The attributes that are mass assignable.
      *
      * @var array
      */
     protected $fillable = [
+        'user_id',
         'credential_id',
         'public_key',
         'attestation_type',
@@ -40,10 +42,8 @@ class WebAuthnCredential extends Model
 
     /**
      * Get the user that owns the credential.
-     *
-     * @return \Illuminate\Database\Eloquent\Relations\BelongsTo
      */
-    public function user()
+    public function user(): BelongsTo
     {
         return $this->belongsTo(config('auth.providers.users.model'));
     }

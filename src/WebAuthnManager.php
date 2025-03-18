@@ -89,6 +89,8 @@ class WebAuthnManager
         // Set up the Ceremony Step Manager Factory
         $this->csmFactory = new CeremonyStepManagerFactory();
         $this->csmFactory->setAlgorithmManager($this->coseAlgorithmManager);
+        if (config('app.debug', false))
+            $this->csmFactory->setSecuredRelyingPartyId(['localhost']);
 
         // Setup the ceremony step managers
         $this->creationCsm = $this->csmFactory->creationCeremony();
@@ -294,7 +296,6 @@ class WebAuthnManager
         try {
             // Parse the client response
             $publicKeyCredential = $this->deserialize($clientResponse, PublicKeyCredential::class);
-
             // Ensure it's an assertion response
             $assertionResponse = $publicKeyCredential->response;
             if (!$assertionResponse instanceof AuthenticatorAssertionResponse) {
@@ -338,7 +339,7 @@ class WebAuthnManager
                 $assertionResponse,
                 $options,
                 $expectedOrigin,
-                Config::get('webauthn.relying_party.id')
+                $publicKeyCredentialSource->userHandle
             );
 
             // Update the credential (last used timestamp)

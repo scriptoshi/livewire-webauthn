@@ -32,6 +32,12 @@ class WebAuthnCredentialRepository
             $aaguidValue = $credential->authenticator_data['aaguid'] ?? '00000000-0000-0000-0000-000000000000';
             $aaguid = Uuid::fromString($aaguidValue);
 
+            // Get the public key - decode it if it's encoded
+            $publicKey = $credential->public_key;
+            if (mb_detect_encoding($publicKey, 'ASCII', true)) {
+                $publicKey = base64_decode($publicKey);
+            }
+
             // Create the PublicKeyCredentialSource object
             return PublicKeyCredentialSource::create(
                 $publicKeyCredentialId,                     // publicKeyCredentialId
@@ -40,7 +46,7 @@ class WebAuthnCredentialRepository
                 $credential->attestation_type,             // attestationType
                 new EmptyTrustPath(),                      // trustPath
                 $aaguid,                                   // aaguid
-                $credential->public_key,                   // credentialPublicKey
+                $publicKey,                                // credentialPublicKey
                 $this->getUserHandleByUserId($credential->user_id), // userHandle
                 $credential->authenticator_data['counter'] ?? 0, // counter
                 null,                                      // otherUI
@@ -79,6 +85,12 @@ class WebAuthnCredentialRepository
                 $aaguidValue = $credential->authenticator_data['aaguid'] ?? '00000000-0000-0000-0000-000000000000';
                 $aaguid = Uuid::fromString($aaguidValue);
 
+                // Get the public key - decode it if it's encoded
+                $publicKey = $credential->public_key;
+                if (mb_detect_encoding($publicKey, 'ASCII', true)) {
+                    $publicKey = base64_decode($publicKey);
+                }
+
                 $sources[] = PublicKeyCredentialSource::create(
                     base64_decode($credential->credential_id), // publicKeyCredentialId
                     'public-key',                             // type
@@ -86,7 +98,7 @@ class WebAuthnCredentialRepository
                     $credential->attestation_type,            // attestationType
                     new EmptyTrustPath(),                     // trustPath
                     $aaguid,                                  // aaguid
-                    $credential->public_key,                  // credentialPublicKey
+                    $publicKey,                               // credentialPublicKey
                     $userHandle,                              // userHandle
                     $credential->authenticator_data['counter'] ?? 0, // counter
                     null,                                     // otherUI
@@ -127,11 +139,14 @@ class WebAuthnCredentialRepository
         $encodedId = base64_encode($publicKeyCredentialSource->publicKeyCredentialId);
         $credential = WebAuthnCredential::where('credential_id', $encodedId)->first();
 
+        // Base64 encode the public key for storage
+        $encodedPublicKey = base64_encode($publicKeyCredentialSource->credentialPublicKey);
+
         // Extract data from the credential source
         $credentialData = [
             'user_id' => $userId,
             'credential_id' => $encodedId,
-            'public_key' => $publicKeyCredentialSource->credentialPublicKey,
+            'public_key' => $encodedPublicKey,  // Store as base64
             'attestation_type' => $publicKeyCredentialSource->attestationType,
             'authenticator_data' => [
                 'counter' => $publicKeyCredentialSource->counter,

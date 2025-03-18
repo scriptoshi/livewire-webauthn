@@ -1,4 +1,4 @@
-@props(['title' => __('Verify WebAuthn Authentication'), 'content' => __('For additional security, please authenticate with your security key or biometrics to continue.'), 'button' => __('Verify')])
+@props(['title' => __('Verify Security key or Biometric Authentication'), 'content' => __('For additional security, please authenticate with your security key or biometrics to continue.'), 'button' => __('Verify')])
 
 @php
     $confirmableId = md5($attributes->wire('then'));

@@ -56,7 +56,7 @@
                     $wire.authenticate(JSON.stringify(response));
                 })
                 .catch(error => {
-                    console.error('WebAuthn Authentication Error:', error);
+                    console.error('Biometric/Security key Authentication Error:', error);
                 });
             },
             

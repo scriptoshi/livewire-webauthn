@@ -121,12 +121,12 @@
     @elseif (!$enabled || count($credentials) === 0)
         <div class="bg-white dark:bg-gray-850">
             <flux:heading size="lg">
-                {{ __('You have not enabled WebAuthn authentication.') }}
+                {{ __('Security Key or Biometric authentication is not Enabled') }}
             </flux:heading>
 
             <div class="mt-3 max-w-xl text-sm text-gray-600 dark:text-gray-400">
                 <p>
-                    {{ __('WebAuthn allows you to use security keys, biometrics (like fingerprint or facial recognition), or your mobile device for secure authentication without passwords.') }}
+                    {{ __('Use hardware security keys, biometrics auth (like fingerprint or facial recognition), or your mobile device for secure authentication without passwords.') }}
                 </p>
             </div>
 
@@ -139,12 +139,12 @@
     @else
         <div class="bg-white dark:bg-gray-850">
             <flux:heading size="lg">
-                {{ __('WebAuthn Security Keys') }}
+                {{ __('Security Keys') }}
             </flux:heading>
 
             <div class="mt-3 max-w-xl text-sm text-gray-600 dark:text-gray-400">
                 <p>
-                    {{ __('You can add multiple security keys for WebAuthn authentication. Using security keys provides strong protection against phishing and account takeovers.') }}
+                    {{ __('You can add multiple security keys for authentication. Using security keys provides strong protection against phishing and account takeovers.') }}
                 </p>
             </div>
 

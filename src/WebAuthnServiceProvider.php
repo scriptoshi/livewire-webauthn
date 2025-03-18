@@ -7,6 +7,7 @@ use Illuminate\Support\ServiceProvider;
 use Livewire\Livewire;
 use Scriptoshi\LivewireWebauthn\Http\Livewire\WebAuthnChallenge;
 use Scriptoshi\LivewireWebauthn\Http\Livewire\WebAuthnManagement;
+use Scriptoshi\LivewireWebauthn\Repository\WebAuthnCredentialRepository;
 
 class WebAuthnServiceProvider extends ServiceProvider
 {
@@ -20,8 +21,17 @@ class WebAuthnServiceProvider extends ServiceProvider
             'webauthn'
         );
 
+        // Register credential repository
+        $this->app->singleton(WebAuthnCredentialRepository::class, function () {
+            return new WebAuthnCredentialRepository();
+        });
+
+
+        // Register WebAuthn manager
         $this->app->singleton('webauthn', function ($app) {
-            return new WebAuthnManager();
+            return new WebAuthnManager(
+                $app->make(WebAuthnCredentialRepository::class)
+            );
         });
     }
 
@@ -52,7 +62,7 @@ class WebAuthnServiceProvider extends ServiceProvider
                 __DIR__ . '/../database/migrations' => database_path('migrations'),
             ], 'migrations');
         }
-        
+
         // Register Blade components
         Blade::component('webauthn::components.confirms-webauthn', 'confirms-webauthn');
 

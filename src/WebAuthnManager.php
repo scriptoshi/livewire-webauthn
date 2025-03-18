@@ -2,50 +2,76 @@
 
 namespace Scriptoshi\LivewireWebauthn;
 
+use Illuminate\Support\Facades\Config;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Contracts\Auth\Authenticatable;
+use Ramsey\Uuid\Uuid;
+use Symfony\Component\Serializer\Encoder\JsonEncode;
+use Symfony\Component\Serializer\Normalizer\AbstractObjectNormalizer;
 use Cose\Algorithm\Manager as CoseAlgorithmManager;
 use Cose\Algorithm\Signature\ECDSA\ES256;
 use Cose\Algorithm\Signature\ECDSA\ES384;
 use Cose\Algorithm\Signature\EdDSA\EdDSA;
 use Cose\Algorithm\Signature\RSA\RS256;
-use Illuminate\Support\Facades\Config;
-use Illuminate\Contracts\Auth\Authenticatable;
-use Ramsey\Uuid\Uuid;
-use Webauthn\AttestationStatement\AttestationObjectLoader;
 use Webauthn\AttestationStatement\AttestationStatementSupportManager;
 use Webauthn\AttestationStatement\NoneAttestationStatementSupport;
-use Webauthn\AttestationStatement\PackedAttestationStatementSupport;
-use Webauthn\AttestationStatement\TPMAttestationStatementSupport;
-use Webauthn\AttestationStatement\FidoU2FAttestationStatementSupport;
-use Webauthn\AttestationStatement\AndroidKeyAttestationStatementSupport;
-use Webauthn\AttestationStatement\AndroidSafetyNetAttestationStatementSupport;
-use Webauthn\AuthenticationExtensions\ExtensionOutputCheckerHandler;
-use Webauthn\AuthenticatorAssertionResponse;
-use Webauthn\AuthenticatorAssertionResponseValidator;
 use Webauthn\AuthenticatorAttestationResponse;
 use Webauthn\AuthenticatorAttestationResponseValidator;
+use Webauthn\AuthenticatorAssertionResponse;
+use Webauthn\AuthenticatorAssertionResponseValidator;
+use Webauthn\AuthenticatorSelectionCriteria;
+use Webauthn\CeremonyStep\CeremonyStepManagerFactory;
+use Webauthn\Denormalizer\WebauthnSerializerFactory;
+use Webauthn\Exception\WebauthnException;
+use Webauthn\PublicKeyCredential;
 use Webauthn\PublicKeyCredentialCreationOptions;
 use Webauthn\PublicKeyCredentialDescriptor;
-use Webauthn\PublicKeyCredentialLoader;
+use Webauthn\PublicKeyCredentialParameters;
 use Webauthn\PublicKeyCredentialRequestOptions;
 use Webauthn\PublicKeyCredentialRpEntity;
-use Webauthn\PublicKeyCredentialSource;
 use Webauthn\PublicKeyCredentialUserEntity;
-use Webauthn\TokenBinding\IgnoreTokenBindingHandler;
+use Scriptoshi\LivewireWebauthn\Repository\WebAuthnCredentialRepository;
 
 class WebAuthnManager
 {
-    protected $attestationStatementSupportManager;
-    protected $publicKeyCredentialLoader;
-    protected $attestationObjectLoader;
-    protected $extensionOutputCheckerHandler;
-    protected $coseAlgorithmManager;
+    /**
+     * @var CoseAlgorithmManager
+     */
+    private $coseAlgorithmManager;
+
+    /**
+     * @var WebAuthnCredentialRepository
+     */
+    private $credentialRepository;
+
+    /**
+     * @var \Symfony\Component\Serializer\SerializerInterface
+     */
+    private $serializer;
+
+    /**
+     * @var CeremonyStepManagerFactory
+     */
+    private $csmFactory;
+
+    /**
+     * @var object
+     */
+    private $creationCsm;
+
+    /**
+     * @var object
+     */
+    private $requestCsm;
 
     /**
      * WebAuthnManager constructor.
      */
-    public function __construct()
+    public function __construct(WebAuthnCredentialRepository $credentialRepository)
     {
-        // Set up the COSE Algorithm Manager
+        $this->credentialRepository = $credentialRepository;
+
+        // Set up the COSE Algorithm Manager with recommended algorithms
         $this->coseAlgorithmManager = new CoseAlgorithmManager();
         $this->coseAlgorithmManager->add(new ES256());
         $this->coseAlgorithmManager->add(new ES384());
@@ -53,22 +79,20 @@ class WebAuthnManager
         $this->coseAlgorithmManager->add(new EdDSA());
 
         // Set up the Attestation Statement Support Manager
-        $this->attestationStatementSupportManager = new AttestationStatementSupportManager();
-        $this->attestationStatementSupportManager->add(new NoneAttestationStatementSupport());
-        $this->attestationStatementSupportManager->add(new PackedAttestationStatementSupport($this->coseAlgorithmManager));
-        $this->attestationStatementSupportManager->add(new TPMAttestationStatementSupport());
-        $this->attestationStatementSupportManager->add(new FidoU2FAttestationStatementSupport());
-        $this->attestationStatementSupportManager->add(new AndroidKeyAttestationStatementSupport());
-        $this->attestationStatementSupportManager->add(new AndroidSafetyNetAttestationStatementSupport(''));
+        $attestationStatementSupportManager = AttestationStatementSupportManager::create();
+        $attestationStatementSupportManager->add(NoneAttestationStatementSupport::create());
 
-        // Set up the Attestation Object Loader
-        $this->attestationObjectLoader = new AttestationObjectLoader($this->attestationStatementSupportManager);
+        // Set up the serializer
+        $factory = new WebauthnSerializerFactory($attestationStatementSupportManager);
+        $this->serializer = $factory->create();
 
-        // Set up Extension Output Checker Handler
-        $this->extensionOutputCheckerHandler = new ExtensionOutputCheckerHandler();
+        // Set up the Ceremony Step Manager Factory
+        $this->csmFactory = new CeremonyStepManagerFactory();
+        $this->csmFactory->setAlgorithmManager($this->coseAlgorithmManager);
 
-        // Set up Public Key Credential Loader
-        $this->publicKeyCredentialLoader = new PublicKeyCredentialLoader($this->attestationObjectLoader);
+        // Setup the ceremony step managers
+        $this->creationCsm = $this->csmFactory->creationCeremony();
+        $this->requestCsm = $this->csmFactory->requestCeremony();
     }
 
     /**
@@ -78,7 +102,7 @@ class WebAuthnManager
      */
     public function getRelyingParty(): PublicKeyCredentialRpEntity
     {
-        return new PublicKeyCredentialRpEntity(
+        return PublicKeyCredentialRpEntity::create(
             Config::get('webauthn.relying_party.name'),
             Config::get('webauthn.relying_party.id')
         );
@@ -95,8 +119,8 @@ class WebAuthnManager
         // The user handle should be a random string that uniquely identifies the user
         // We'll use the user's ID converted to a UUID for this purpose
         $userHandle = Uuid::uuid5(Uuid::NAMESPACE_OID, $user->getAuthIdentifier())->toString();
-        
-        return new PublicKeyCredentialUserEntity(
+
+        return PublicKeyCredentialUserEntity::create(
             $user->email,
             $userHandle,
             $user->name
@@ -104,149 +128,118 @@ class WebAuthnManager
     }
 
     /**
-     * Get registered credential sources for a user
-     *
-     * @param Authenticatable $user
-     * @return array
-     */
-    public function getCredentialSourcesForUser(Authenticatable $user): array
-    {
-        $credentials = $user->webauthnCredentials;
-        
-        $sources = [];
-        foreach ($credentials as $credential) {
-            $sources[] = new PublicKeyCredentialSource(
-                $credential->credential_id,
-                'public-key',
-                [],
-                $credential->attestation_type,
-                $this->getRelyingParty(),
-                $this->getUserEntity($user),
-                $credential->public_key,
-                $credential->counter ?? 0,
-                $credential->attestation_format ?? null
-            );
-        }
-        
-        return $sources;
-    }
-
-    /**
      * Generate registration options for creating a new credential
      *
      * @param Authenticatable $user
-     * @param string $attestation
+     * @param string|null $attestation
      * @return array
      */
-    public function generateRegistrationOptions(Authenticatable $user, string $attestation = null): array
+    public function generateRegistrationOptions(Authenticatable $user, ?string $attestation = null): array
     {
-        // Get existing credentials
+        // Get existing credentials to exclude
         $excludeCredentials = [];
-        $credentials = $user->webauthnCredentials;
-        
-        foreach ($credentials as $credential) {
-            $excludeCredentials[] = new PublicKeyCredentialDescriptor(
+
+        foreach ($user->webauthnCredentials as $credential) {
+            $excludeCredentials[] = PublicKeyCredentialDescriptor::create(
                 'public-key',
                 base64_decode($credential->credential_id)
             );
         }
-        
-        // Create options
+
+        // Create the credential parameters (supported algorithms)
+        $pubKeyCredParams = [];
+        foreach (Config::get('webauthn.algorithms', [-7, -257, -8]) as $alg) {
+            $pubKeyCredParams[] = PublicKeyCredentialParameters::create('public-key', $alg);
+        }
+
+        // Set authenticator selection criteria
+        $authenticatorSelection = AuthenticatorSelectionCriteria::create(
+            Config::get('webauthn.authenticator_attachment', null),
+            Config::get('webauthn.resident_key', AuthenticatorSelectionCriteria::RESIDENT_KEY_REQUIREMENT_PREFERRED),
+            Config::get('webauthn.user_verification', AuthenticatorSelectionCriteria::USER_VERIFICATION_REQUIREMENT_PREFERRED)
+        );
+
+        // Set attestation conveyance preference if provided
+        if ($attestation === null) {
+            $attestation = Config::get('webauthn.attestation_conveyance', PublicKeyCredentialCreationOptions::ATTESTATION_CONVEYANCE_PREFERENCE_NONE);
+        }
+
+        // Create options with all parameters at once
         $options = PublicKeyCredentialCreationOptions::create(
             $this->getRelyingParty(),
             $this->getUserEntity($user),
-            random_bytes(32), // challenge
-            [
-                // Define which algorithms are supported
-                ['type' => 'public-key', 'alg' => -7],  // ES256
-                ['type' => 'public-key', 'alg' => -257], // RS256
-                ['type' => 'public-key', 'alg' => -8],   // EdDSA
-            ]
+            random_bytes(32), // Challenge
+            $pubKeyCredParams,
+            $authenticatorSelection,
+            $attestation,
+            $excludeCredentials
         );
-        
-        // Set attestation conveyance
-        $options->setAttestation($attestation ?? Config::get('webauthn.attestation_conveyance', 'none'));
-        
-        // Set authenticator selection criteria
-        $options->setAuthenticatorSelection([
-            'userVerification' => Config::get('webauthn.user_verification', 'preferred'),
-            'residentKey' => 'preferred',
-            'requireResidentKey' => false,
-        ]);
-        
-        // Exclude existing credentials
-        if (!empty($excludeCredentials)) {
-            $options->setExcludeCredentials($excludeCredentials);
-        }
-        
-        // Return as array for JSON encoding
-        return $options->jsonSerialize();
+
+        // Convert to array for JSON serialization
+        return $this->serializeToArray($options);
     }
 
     /**
      * Verify registration response and save the credential
      *
      * @param string $clientResponse
-     * @param PublicKeyCredentialCreationOptions $options
+     * @param array $publicKeyCredentialCreationOptions
      * @param Authenticatable $user
      * @param string|null $credentialName
      * @return bool
      */
     public function verifyRegistrationResponse(
-        string $clientResponse, 
-        array $publicKeyCredentialCreationOptions, 
+        string $clientResponse,
+        array $publicKeyCredentialCreationOptions,
         Authenticatable $user,
         ?string $credentialName = null
     ): bool {
         try {
-            // Load creation options from array
-            $publicKeyCredentialCreationOptions = PublicKeyCredentialCreationOptions::createFromArray($publicKeyCredentialCreationOptions);
-            
             // Parse the client response
-            $publicKeyCredential = $this->publicKeyCredentialLoader->load($clientResponse);
-            $response = $publicKeyCredential->getResponse();
-            
-            if (!$response instanceof AuthenticatorAttestationResponse) {
-                throw new \Exception('Invalid response type');
+            $publicKeyCredential = $this->deserialize($clientResponse, PublicKeyCredential::class);
+
+            // Ensure it's an attestation response for registration
+            $attestationResponse = $publicKeyCredential->response;
+            if (!$attestationResponse instanceof AuthenticatorAttestationResponse) {
+                throw new WebauthnException('Invalid response type');
             }
-            
-            // Set up the validator
-            $validator = new AuthenticatorAttestationResponseValidator(
-                $this->attestationStatementSupportManager,
-                null,
-                $this->extensionOutputCheckerHandler,
-                new IgnoreTokenBindingHandler()
+
+            // Reconstruct the creation options
+            $options = $this->deserialize(
+                json_encode($publicKeyCredentialCreationOptions),
+                PublicKeyCredentialCreationOptions::class
             );
-            
+
+            // Create the validator
+            $validator = AuthenticatorAttestationResponseValidator::create($this->creationCsm);
+
+            // Get the expected origin
+            $expectedOrigin = Config::get('app.url');
+
+            // Get the expected RP ID
+            $expectedRpId = Config::get('webauthn.relying_party.id');
+
             // Validate the response
             $publicKeyCredentialSource = $validator->check(
-                $response,
-                $publicKeyCredentialCreationOptions,
-                Config::get('webauthn.relying_party.id')
+                $attestationResponse,
+                $options,
+                $expectedOrigin,
+                $expectedRpId
             );
-            
-            // Store the credential
-            $user->webauthnCredentials()->create([
-                'credential_id' => base64_encode($publicKeyCredentialSource->getPublicKeyCredentialId()),
-                'public_key' => $publicKeyCredentialSource->getPublicKey(),
-                'attestation_type' => $publicKeyCredentialSource->getAttestationType(),
-                'attestation_format' => $publicKeyCredentialSource->getAttestationFormat(),
-                'authenticator_data' => [
-                    'counter' => $publicKeyCredentialSource->getCounter(),
-                    'aaguid' => $publicKeyCredentialSource->getAaguid(),
-                ],
-                'name' => $credentialName ?? 'Security Key (' . date('Y-m-d H:i:s') . ')',
-            ]);
-            
+
+            // Store the new credential
+            $this->credentialRepository->saveCredentialSource($publicKeyCredentialSource, $user->getAuthIdentifier(), $credentialName);
+
             // Mark WebAuthn as enabled for the user
-            $user->forceFill([
-                'webauthn_enabled' => true,
-                'webauthn_confirmed_at' => now(),
-            ])->save();
-            
+            $user->webauthn_enabled = true;
+            $user->webauthn_confirmed_at = now();
+            $user->save();
+
             return true;
         } catch (\Exception $e) {
-            \Log::error('WebAuthn registration failed: ' . $e->getMessage());
+            Log::error('WebAuthn registration failed: ' . $e->getMessage(), [
+                'trace' => $e->getTraceAsString(),
+            ]);
             return false;
         }
     }
@@ -261,35 +254,28 @@ class WebAuthnManager
     {
         // Create a new challenge
         $challenge = random_bytes(32);
-        
-        // Create request options
-        $options = PublicKeyCredentialRequestOptions::create(
-            $challenge,
-            Config::get('webauthn.relying_party.id')
-        );
-        
-        // Set user verification preference
-        $options->setUserVerification(Config::get('webauthn.user_verification', 'preferred'));
-        
-        // If a specific user is provided, only allow their credentials
+
+        // Get credentials if user is provided
+        $allowCredentials = [];
         if ($user) {
-            $allowCredentials = [];
-            $credentials = $user->webauthnCredentials;
-            
-            foreach ($credentials as $credential) {
-                $allowCredentials[] = new PublicKeyCredentialDescriptor(
+            foreach ($user->webauthnCredentials as $credential) {
+                $allowCredentials[] = PublicKeyCredentialDescriptor::create(
                     'public-key',
                     base64_decode($credential->credential_id)
                 );
             }
-            
-            if (!empty($allowCredentials)) {
-                $options->setAllowCredentials($allowCredentials);
-            }
         }
-        
-        // Return as array for JSON encoding
-        return $options->jsonSerialize();
+
+        // Create options with all parameters at once
+        $options = PublicKeyCredentialRequestOptions::create(
+            $challenge,
+            Config::get('webauthn.relying_party.id'),
+            $allowCredentials,
+            Config::get('webauthn.user_verification', PublicKeyCredentialRequestOptions::USER_VERIFICATION_REQUIREMENT_PREFERRED)
+        );
+
+        // Convert to array for JSON serialization
+        return $this->serializeToArray($options);
     }
 
     /**
@@ -301,70 +287,108 @@ class WebAuthnManager
      * @return bool|Authenticatable
      */
     public function verifyAuthenticationResponse(
-        string $clientResponse, 
-        array $publicKeyCredentialRequestOptions, 
+        string $clientResponse,
+        array $publicKeyCredentialRequestOptions,
         Authenticatable $user = null
     ) {
         try {
-            // Load request options from array
-            $publicKeyCredentialRequestOptions = PublicKeyCredentialRequestOptions::createFromArray($publicKeyCredentialRequestOptions);
-            
             // Parse the client response
-            $publicKeyCredential = $this->publicKeyCredentialLoader->load($clientResponse);
-            $response = $publicKeyCredential->getResponse();
-            
-            if (!$response instanceof AuthenticatorAssertionResponse) {
-                throw new \Exception('Invalid response type');
+            $publicKeyCredential = $this->deserialize($clientResponse, PublicKeyCredential::class);
+
+            // Ensure it's an assertion response
+            $assertionResponse = $publicKeyCredential->response;
+            if (!$assertionResponse instanceof AuthenticatorAssertionResponse) {
+                throw new WebauthnException('Invalid response type');
             }
-            
-            // Get credential ID
-            $credentialId = base64_encode($publicKeyCredential->getRawId());
-            
-            // Find the credential in the database
-            $credentialModel = \Scriptoshi\LivewireWebauthn\Models\WebAuthnCredential::where('credential_id', $credentialId)->first();
-            
-            if (!$credentialModel) {
-                throw new \Exception('Unknown credential');
+
+            // Get the raw credential ID
+            $credentialId = $publicKeyCredential->rawId;
+
+            // Find the credential in our repository
+            $publicKeyCredentialSource = $this->credentialRepository->findOneByCredentialId($credentialId);
+            if (!$publicKeyCredentialSource) {
+                throw new WebauthnException('Unknown credential');
             }
-            
-            // If user is specified, validate it's the correct user
-            if ($user && $credentialModel->user_id !== $user->getAuthIdentifier()) {
-                throw new \Exception('Credential does not belong to the specified user');
+
+            // Check if the credential belongs to the specified user (if provided)
+            if ($user) {
+                $publicKeyCredentialUserEntity = $this->credentialRepository->getUserEntityByCredentialSource($publicKeyCredentialSource);
+                $expectedUserHandle = $this->getUserEntity($user)->id;
+
+                if ($publicKeyCredentialUserEntity->id !== $expectedUserHandle) {
+                    throw new WebauthnException('Credential does not belong to the specified user');
+                }
             }
-            
-            // Get the actual user
-            $credentialUser = $credentialModel->user;
-            
+
+            // Reconstruct the request options
+            $options = $this->deserialize(
+                json_encode($publicKeyCredentialRequestOptions),
+                PublicKeyCredentialRequestOptions::class
+            );
+
+            // Get the expected origin
+            $expectedOrigin = Config::get('app.url');
+
             // Create the validator
-            $validator = new AuthenticatorAssertionResponseValidator(
-                null,
-                null,
-                $this->extensionOutputCheckerHandler,
-                new IgnoreTokenBindingHandler()
-            );
-            
-            // Get credential sources for the user
-            $credentialSources = $this->getCredentialSourcesForUser($credentialUser);
-            
+            $validator = AuthenticatorAssertionResponseValidator::create($this->requestCsm);
+
             // Validate the response
-            $publicKeyCredentialSource = $validator->check(
-                $credentialId,
-                $response,
-                $publicKeyCredentialRequestOptions,
-                Config::get('webauthn.relying_party.id'),
-                $credentialSources
+            $validator->check(
+                $publicKeyCredentialSource,
+                $assertionResponse,
+                $options,
+                $expectedOrigin,
+                Config::get('webauthn.relying_party.id')
             );
-            
-            // Update counter
-            $credentialModel->update([
-                'authenticator_data->counter' => $publicKeyCredentialSource->getCounter(),
-                'last_used_at' => now(),
-            ]);
-            
-            return $credentialUser;
+
+            // Update the credential (last used timestamp)
+            $userId = $this->credentialRepository->getUserIdByCredentialSource($publicKeyCredentialSource);
+            $this->credentialRepository->updateCredentialLastUsed($credentialId, $userId);
+
+            // Return the user
+            if (!$user) {
+                $userModel = config('auth.providers.users.model');
+                $user = $userModel::find($userId);
+            }
+
+            return $user;
         } catch (\Exception $e) {
-            \Log::error('WebAuthn authentication failed: ' . $e->getMessage());
+            Log::error('WebAuthn authentication failed: ' . $e->getMessage(), [
+                'trace' => $e->getTraceAsString(),
+            ]);
             return false;
         }
+    }
+
+    /**
+     * Serialize an object to an array
+     *
+     * @param object $object
+     * @return array
+     */
+    private function serializeToArray($object): array
+    {
+        $json = $this->serializer->serialize(
+            $object,
+            'json',
+            [
+                AbstractObjectNormalizer::SKIP_NULL_VALUES => true,
+                JsonEncode::OPTIONS => JSON_THROW_ON_ERROR,
+            ]
+        );
+
+        return json_decode($json, true);
+    }
+
+    /**
+     * Deserialize a JSON string to an object
+     *
+     * @param string $json
+     * @param string $type
+     * @return object
+     */
+    private function deserialize(string $json, string $type)
+    {
+        return $this->serializer->deserialize($json, $type, 'json');
     }
 }

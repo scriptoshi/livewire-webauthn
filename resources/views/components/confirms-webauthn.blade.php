@@ -15,10 +15,10 @@
 </span>
 
 @once
-<flux:modal wire:model.live="confirmingWebAuthn" class="md:w-96">
+<flux:modal wire:model.live="confirmingWebAuthn">
     <div class="space-y-6">
         <div>
-            <flux:heading size="lg">{{ $title }}</flux:heading>
+            <flux:heading class="!text-primary" size="lg">{{ $title }}</flux:heading>
             <flux:subheading>{{ $content }}</flux:subheading>
         </div>
 

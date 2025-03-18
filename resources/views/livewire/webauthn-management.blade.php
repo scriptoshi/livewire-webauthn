@@ -18,75 +18,77 @@
             </div>
 
             <div x-data="{
+                error: null,
                 register() {
-                        if (!@js($registrationOptions)) return;
+                    if (!@js($registrationOptions)) return;
             
-                        // Prepare registration options
-                        const publicKey = {
-                            challenge: this.base64UrlDecode(@js($registrationOptions['challenge'])),
-                            rp: {
-                                name: @js($registrationOptions['rp']['name']),
-                                id: @js($registrationOptions['rp']['id'])
-                            },
-                            user: {
-                                id: this.base64UrlDecode(@js($registrationOptions['user']['id'])),
-                                name: @js($registrationOptions['user']['name']),
-                                displayName: @js($registrationOptions['user']['displayName'])
-                            },
-                            pubKeyCredParams: @js($registrationOptions['pubKeyCredParams']),
-                            timeout: @js($registrationOptions['timeout'] ?? 6000) || 60000,
-                            attestation: @js($registrationOptions['attestation']) || 'none',
-                            authenticatorSelection: @js($registrationOptions['authenticatorSelection']) || {}
-                        };
+                    // Prepare registration options
+                    const publicKey = {
+                        challenge: this.base64UrlDecode(@js($registrationOptions['challenge'])),
+                        rp: {
+                            name: @js($registrationOptions['rp']['name']),
+                            id: @js($registrationOptions['rp']['id'])
+                        },
+                        user: {
+                            id: this.base64UrlDecode(@js($registrationOptions['user']['id'])),
+                            name: @js($registrationOptions['user']['name']),
+                            displayName: @js($registrationOptions['user']['displayName'])
+                        },
+                        pubKeyCredParams: @js($registrationOptions['pubKeyCredParams']),
+                        timeout: @js($registrationOptions['timeout'] ?? 6000) || 60000,
+                        attestation: @js($registrationOptions['attestation']) || 'none',
+                        authenticatorSelection: @js($registrationOptions['authenticatorSelection']) || {}
+                    };
             
-                        if (@js($registrationOptions['excludeCredentials']) && @js($registrationOptions['excludeCredentials']).length > 0) {
-                            publicKey.excludeCredentials = @js($registrationOptions['excludeCredentials']).map(cred => ({
-                                id: this.base64UrlDecode(cred.id),
-                                type: cred.type,
-                                transports: cred.transports || ['usb', 'ble', 'nfc', 'internal']
-                            }));
-                        }
-            
-                        // Start registration
-                        navigator.credentials.create({
-                                publicKey
-                            })
-                            .then(credential => {
-                                const attestationResponse = credential.response;
-            
-                                const response = {
-                                    id: credential.id,
-                                    rawId: this.base64UrlEncode(credential.rawId),
-                                    type: credential.type,
-                                    response: {
-                                        clientDataJSON: this.base64UrlEncode(attestationResponse.clientDataJSON),
-                                        attestationObject: this.base64UrlEncode(attestationResponse.attestationObject),
-                                        transports: attestationResponse.getTransports ? attestationResponse.getTransports() : []
-                                    }
-                                };
-            
-                                $wire.completeRegistration(JSON.stringify(response), $wire.newCredentialName);
-                            })
-                            .catch(error => {
-                                console.error('WebAuthn Registration Error:', error);
-                            });
-                    },
-            
-                    base64UrlDecode(base64Url) {
-                        const padding = '='.repeat((4 - (base64Url.length % 4)) % 4);
-                        const base64 = (base64Url + padding)
-                            .replace(/-/g, '+')
-                            .replace(/_/g, '/');
-            
-                        return Uint8Array.from(atob(base64), c => c.charCodeAt(0));
-                    },
-            
-                    base64UrlEncode(buffer) {
-                        return btoa(String.fromCharCode(...new Uint8Array(buffer)))
-                            .replace(/\+/g, '-')
-                            .replace(/\//g, '_')
-                            .replace(/=/g, '');
+                    if (@js($registrationOptions['excludeCredentials']) && @js($registrationOptions['excludeCredentials']).length > 0) {
+                        publicKey.excludeCredentials = @js($registrationOptions['excludeCredentials']).map(cred => ({
+                            id: this.base64UrlDecode(cred.id),
+                            type: cred.type,
+                            transports: cred.transports || ['usb', 'ble', 'nfc', 'internal']
+                        }));
                     }
+            
+                    // Start registration
+                    navigator.credentials.create({
+                            publicKey
+                        })
+                        .then(credential => {
+                            const attestationResponse = credential.response;
+            
+                            const response = {
+                                id: credential.id,
+                                rawId: this.base64UrlEncode(credential.rawId),
+                                type: credential.type,
+                                response: {
+                                    clientDataJSON: this.base64UrlEncode(attestationResponse.clientDataJSON),
+                                    attestationObject: this.base64UrlEncode(attestationResponse.attestationObject),
+                                    transports: attestationResponse.getTransports ? attestationResponse.getTransports() : []
+                                }
+                            };
+            
+                            $wire.completeRegistration(JSON.stringify(response), $wire.newCredentialName);
+                        })
+                        .catch(error => {
+                            this.error = `WebAuthn Registration Error: ${error}` ;
+                            console.error('WebAuthn Registration Error:', error);
+                        });
+                },
+            
+                base64UrlDecode(base64Url) {
+                    const padding = '='.repeat((4 - (base64Url.length % 4)) % 4);
+                    const base64 = (base64Url + padding)
+                        .replace(/-/g, '+')
+                        .replace(/_/g, '/');
+            
+                    return Uint8Array.from(atob(base64), c => c.charCodeAt(0));
+                },
+            
+                base64UrlEncode(buffer) {
+                    return btoa(String.fromCharCode(...new Uint8Array(buffer)))
+                        .replace(/\+/g, '-')
+                        .replace(/\//g, '_')
+                        .replace(/=/g, '');
+                }
             }" x-init="register()" class="py-8">
                 <div class="text-center">
                     <div
@@ -107,6 +109,7 @@
                         {{ $message }}
                     </div>
                 @enderror
+                <div x-html="error" x-show="!!error" class="mt-2 text-sm text-red-600 dark:text-red-400"></div>
             </div>
 
             <div class="mt-4 flex justify-end">

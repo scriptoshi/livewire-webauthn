@@ -32,6 +32,10 @@ class WebAuthnManagement extends Component
 
     public function startRegistration()
     {
+        if (!$this->newCredentialName) {
+            $this->addError('credentials', 'The security key name is required.');
+            return;
+        }
         $this->resetErrorBag();
         $this->message = '';
         $this->messageType = '';
@@ -54,17 +58,17 @@ class WebAuthnManagement extends Component
         }
 
         $user = Auth::user();
-        
+
         if (WebAuthn::verifyRegistrationResponse($response, $this->registrationOptions, $user, $credentialName)) {
             $this->registrationOptions = null;
             $this->isRegistering = false;
             $this->newCredentialName = '';
             $this->enabled = true;
             $this->refreshCredentials();
-            
+
             $this->message = 'Security key registered successfully!';
             $this->messageType = 'success';
-            
+
             $this->dispatch('webauthn-credential-registered');
         } else {
             $this->addError('registration', 'Failed to register security key. Please try again.');
@@ -84,21 +88,21 @@ class WebAuthnManagement extends Component
     {
         $user = Auth::user();
         $credential = $user->webauthnCredentials()->where('id', $credentialId)->first();
-        
+
         if ($credential) {
             $credential->delete();
-            
+
             // Check if this was the last credential, if so, disable WebAuthn
             if ($user->webauthnCredentials()->count() === 0) {
                 $user->forceFill(['webauthn_enabled' => false])->save();
                 $this->enabled = false;
             }
-            
+
             $this->refreshCredentials();
-            
+
             $this->message = 'Security key removed successfully!';
             $this->messageType = 'success';
-            
+
             $this->dispatch('webauthn-credential-removed');
         }
     }
